@@ -23,12 +23,21 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+[K-merge] (backend) Portfolio website.
+
+Front end : 
+https://github.com/Kritjomza/K-Merge-Frontend-Dev.git
 
 ## Project setup
 
 ```bash
 $ npm install
+
+# runtime deps
+$ npm i @supabase/supabase-js @nestjs/config cookie-parser
+
+# dev types (แนะนำ)
+$ npm i -D @types/cookie-parser
 ```
 
 ## Compile and run the project
