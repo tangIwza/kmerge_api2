@@ -35,8 +35,8 @@ export class AuthController {
             httpOnly: true, sameSite: 'lax', secure: isProd,
             maxAge: maxDays * 24 * 60 * 60 * 1000, path: '/',
         });
-
-        return res.redirect('/');
+        const frontend = this.cfg.get('FRONTEND_URL') || 'http://localhost:5173';
+        return res.redirect(frontend); // ← กลับหน้า app.tsx ที่ frontend
     }
 
     @Get('me')
