@@ -26,7 +26,7 @@
 [K-merge] (backend) Portfolio website.
 
 Front end : 
-https://github.com/nestjs/nest](https://github.com/Kritjomza/K-Merge-Frontend-Dev.git
+https://github.com/Kritjomza/K-Merge-Frontend-Dev.git
 
 ## Project setup
 
