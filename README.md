@@ -36,6 +36,8 @@ $ npm install
 # runtime deps
 $ npm i @supabase/supabase-js @nestjs/config cookie-parser
 
+$ npm i cookie-parser
+
 # dev types (แนะนำ)
 $ npm i -D @types/cookie-parser
 ```
