@@ -6,21 +6,31 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 @Injectable()
 export class SupabaseService {
     private supabase: SupabaseClient;
+    private supabaseAdmin: SupabaseClient;
 
     constructor(private cfg: ConfigService) {
         const url = this.cfg.get<string>('SUPABASE_URL');
         const anon = this.cfg.get<string>('SUPABASE_ANON_KEY');
-        if (!url || !anon) {
-            throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY');
+        const serviceRole = this.cfg.get<string>('SUPABASE_SERVICE_ROLE');
+
+        if (!url || !anon || !serviceRole) {
+            throw new Error('Missing Supabase credentials');
         }
 
         this.supabase = createClient(url, anon, {
             auth: { flowType: 'pkce', autoRefreshToken: true, persistSession: false },
         });
+
+        // Admin client for server-side operations
+        this.supabaseAdmin = createClient(url, serviceRole);
     }
 
     client() {
         return this.supabase;
+    }
+
+    getAdminClient() {
+        return this.supabaseAdmin;
     }
 
     forUser(accessToken: string) {
