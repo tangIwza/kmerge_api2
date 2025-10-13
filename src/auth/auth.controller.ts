@@ -35,10 +35,14 @@ export class AuthController {
     // ✅ **แก้ไขส่วนนี้**
     // เราจะเอาส่วนที่ insert ลง public.users ออกทั้งหมด
     // เพราะ Trigger ใน Database จะจัดการให้เราเอง
+    const frontend = this.cfg.get('FRONTEND_URL') || 'http://localhost:5173';
+    const emailRedirectTo = `${frontend}/verify?email=${encodeURIComponent(email)}`;
+
     const { error } = await this.supa.client().auth.signUp({
       email,
       password,
       options: {
+        emailRedirectTo,
         data: {
           full_name: full_name,
         },
@@ -97,6 +101,45 @@ export class AuthController {
 
     const frontend = this.cfg.get('FRONTEND_URL') || 'http://localhost:5173';
     return res.redirect(`${frontend}/profile`);
+  }
+
+  // Verify email token (link) - token comes from query param
+  @Get('verify')
+  async verifyEmail(@Query('token') token: string, @Res() res: Response) {
+    if (!token) return res.status(400).send('Missing token');
+    try {
+      // Supabase JS doesn't expose direct verify endpoint; use auth.exchangeCodeForSession if token is code
+      // If token is a magic link token we can attempt to exchange it
+      const { data, error } = await this.supa.client().auth.exchangeCodeForSession(token);
+      if (error) return res.status(400).send(error.message);
+
+      const isProd = this.cfg.get('NODE_ENV') === 'production';
+      const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
+      setAuthCookies(res, data.session, maxDays, isProd);
+
+      const frontend = this.cfg.get('FRONTEND_URL') || 'http://localhost:5173';
+      return res.redirect(`${frontend}/profile`);
+    } catch (err) {
+      console.error('verifyEmail failed:', err);
+      return res.status(500).send('Verification failed');
+    }
+  }
+
+  @Post('resend-confirmation')
+  async resendConfirmation(@Body() body: { email?: string }) {
+    const email = body?.email;
+    if (!email) return { ok: false, message: 'Email required' };
+    try {
+      const { data, error } = await this.supa.client().auth.resetPasswordForEmail(email, { redirectTo: `${this.cfg.get('FRONTEND_URL')}/verify` });
+      if (error) {
+        console.error('resendConfirmation error:', error.message);
+        return { ok: false, message: error.message };
+      }
+      return { ok: true };
+    } catch (err) {
+      console.error('resendConfirmation failed:', err);
+      return { ok: false, message: 'Failed to resend' };
+    }
   }
   
   @Get('me')
