@@ -166,10 +166,45 @@ export class AuthController {
     }
     const supaAdmin = this.supa.getAdminClient();
 
+    let avatarUrl = body.avatar_url;
+    if (body.avatar && body.avatar.startsWith('data:image')) {
+      // Upload new avatar
+      const base64Data = body.avatar.split(',')[1];
+      const buffer = Buffer.from(base64Data, 'base64');
+      const filename = `${user.id}-${Date.now()}.jpg`;
+
+      const { data: uploadData, error: uploadError } = await supaAdmin
+        .storage
+        .from('avatars')
+        .upload(filename, buffer, {
+          contentType: 'image/jpeg',
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error('Error uploading avatar:', uploadError.message);
+        throw new InternalServerErrorException('Could not upload avatar.');
+      }
+
+      // Get public URL
+      const { data: { publicUrl } } = supaAdmin
+        .storage
+        .from('avatars')
+        .getPublicUrl(filename);
+
+      avatarUrl = publicUrl;
+    }
+
+    // Update profile data
     const { data, error } = await supaAdmin
-      .from('users')
+      .from('profiles')
       .update({
         full_name: body.full_name,
+        username: body.username,
+        about: body.about,
+        phone: body.phone,
+        avatar_url: avatarUrl,
+        updated_at: new Date().toISOString()
       })
       .eq('id', user.id)
       .select()
@@ -178,6 +213,22 @@ export class AuthController {
     if (error) {
       console.error('Error updating profile:', error.message);
       throw new InternalServerErrorException('Could not update profile.');
+    }
+
+    // Also update auth.users metadata
+    const { error: authError } = await supaAdmin.auth.admin.updateUserById(
+      user.id,
+      {
+        user_metadata: {
+          full_name: body.full_name,
+          avatar_url: avatarUrl
+        }
+      }
+    );
+
+    if (authError) {
+      console.error('Error updating auth metadata:', authError.message);
+      // Don't throw here since profile was updated successfully
     }
 
     return { user: data };
