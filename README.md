@@ -68,6 +68,12 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
+### See test data in output
+
+- The Jest config enables verbose mode and shows `console.log` by default.
+- Run with: `npm run test` (or `npm run test -- --verbose`)
+- Example logs are printed in `src/app.service.spec.ts` so you can see inputs/outputs for each case.
+
 ## Deployment
 
 When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
