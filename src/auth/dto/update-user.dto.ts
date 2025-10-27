@@ -1,7 +1,8 @@
 // src/auth/dto/update-user.dto.ts
-import { IsString, IsOptional, IsEmail, MinLength, MaxLength } from 'class-validator';
+import { IsString, IsOptional, MinLength, MaxLength } from 'class-validator';
 
 export class UpdateUserDto {
+  // Legacy name used elsewhere in the app (mapped to displayName)
   @IsString()
   @MinLength(2)
   @MaxLength(100)
@@ -32,4 +33,21 @@ export class UpdateUserDto {
   @IsString()
   @IsOptional()
   avatar?: string; // Base64 data URL for new avatar upload
+
+  // New schema (as per diagram): Profile table columns
+  @IsString()
+  @IsOptional()
+  displayName?: string;
+
+  @IsString()
+  @IsOptional()
+  avatarUrl?: string;
+
+  @IsString()
+  @IsOptional()
+  contact?: string;
+
+  @IsString()
+  @IsOptional()
+  bio?: string;
 }
