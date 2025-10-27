@@ -45,7 +45,7 @@ export class AuthController {
       // ignore â€” non-fatal
     }
 
-    // Update then insert into Profile table keyed by userID
+    // Update then insert into Profile table keyed by id
     const nowIso = new Date().toISOString();
     const { data: prof, error: upErr } = await admin
       .from('Profile')
@@ -61,8 +61,7 @@ export class AuthController {
     if (!prof && !upErr) {
       const { error: insErr } = await admin
         .from('Profile')
-        .insert({
-          userID: user.id,
+        .insert({ id: user.id, userID: user.id,
           displayName: displayName,
           avatarUrl: avatar,
           updatedAt: nowIso,
@@ -211,9 +210,10 @@ export class AuthController {
       .eq('userID', (req as any).user.id)
       .maybeSingle();
 
-    if (profile?.avatarUrl) {
+    const rawAvatar = (profile && ((profile as any).avatarUrl || (profile as any).avatarurl || (profile as any).avaterUrl || (profile as any).avatar_url)) as string | undefined;
+    if (rawAvatar) {
       try {
-        let key = String(profile.avatarUrl);
+        let key = String(rawAvatar);
         const idx = key.lastIndexOf('/avatars/');
         if (idx !== -1) key = key.substring(idx + '/avatars/'.length);
         const { data: signed } = await admin.storage
@@ -263,8 +263,8 @@ export class AuthController {
         console.error('Error uploading avatar:', uploadError.message);
         throw new InternalServerErrorException('Could not upload avatar.');
       }
-
-            // Store only storage key and sign on read\r\n      avatarUrl = filename;
+      // Store only storage key; we'll sign on read when returning
+      avatarUrl = filename;
     }
 
     // Map incoming body to your schema (diagram): Profile table columns
@@ -274,34 +274,96 @@ export class AuthController {
 
     // Try update existing Profile by userID first; insert if missing
     const nowIso = new Date().toISOString();
-    const updatePayload: any = {
+    const basePayload: any = {
       displayName,
-      avatarUrl: avatarUrl,
       contact,
       bio,
       updatedAt: nowIso,
     };
+    if (avatarUrl) basePayload.avatarUrl = avatarUrl;
 
-    // Attempt update where userID equals current auth user id
-    const { data: profUpdate, error: profUpdateErr } = await supaAdmin
-      .from('Profile')
-      .update(updatePayload)
-      .eq('userID', (user as any).id)
-      .select()
-      .maybeSingle();
-
-    if (!profUpdate && profUpdateErr == null) {
-      // No row to update -> insert
-      const { data: profInsert, error: profInsertErr } = await supaAdmin
+    // Attempt update (camelCase first)
+    let profUpdateErr: any = null;
+    let profUpdate: any = null;
+    {
+      const { data, error } = await supaAdmin
         .from('Profile')
-        .insert({
-          userID: (user as any).id,
-          ...updatePayload,
-        })
+        .update(basePayload)
+        .eq('userID', (user as any).id)
+        .select()
+        .maybeSingle();
+      profUpdate = data; profUpdateErr = error || null;
+    }
+    // If column avatarUrl does not exist (some DBs use avatarurl or avaterUrl), retry with alternate casing
+    if (profUpdateErr && String(profUpdateErr.message || '').includes('avatarUrl')) {
+      const altPayload = { ...basePayload } as any;
+      if ('avatarUrl' in altPayload) {
+        altPayload.avatarurl = altPayload.avatarUrl;
+        delete altPayload.avatarUrl;
+      }
+      const { data, error } = await supaAdmin
+        .from('Profile')
+        .update(altPayload)
+        .eq('userID', (user as any).id)
+        .select()
+        .maybeSingle();
+      profUpdate = data; profUpdateErr = error || null;
+      // If still failing, try common misspelling 'avaterUrl'
+      if (profUpdateErr) {
+        const alt2 = { ...basePayload } as any;
+        if ('avatarUrl' in alt2) {
+          alt2.avaterUrl = alt2.avatarUrl;
+          delete alt2.avatarUrl;
+        }
+        const retry2 = await supaAdmin
+          .from('Profile')
+          .update(alt2)
+          .eq('userID', (user as any).id)
+          .select()
+          .maybeSingle();
+        profUpdate = retry2.data; profUpdateErr = retry2.error || null;
+      }
+    }
+
+    if (!profUpdate && !profUpdateErr) {
+      // No row to update -> insert
+      let insertPayload = { userID: (user as any).id, ...basePayload } as any;
+      const { data: insData, error: insErr } = await supaAdmin
+        .from('Profile')
+        .insert(insertPayload)
         .select()
         .single();
-      if (profInsertErr) {
-        console.error('Error inserting Profile:', profInsertErr.message);
+      // If camelCase insert fails on avatarUrl, retry with avatarurl then avaterUrl
+      if (insErr && String(insErr.message || '').includes('avatarUrl')) {
+        insertPayload = { userID: (user as any).id, ...basePayload } as any;
+        if ('avatarUrl' in insertPayload) {
+          insertPayload.avatarurl = insertPayload.avatarUrl;
+          delete insertPayload.avatarUrl;
+        }
+        let retry = await supaAdmin
+          .from('Profile')
+          .insert(insertPayload)
+          .select()
+          .single();
+        if (retry.error) {
+          // Try misspelling variant
+          insertPayload = { userID: (user as any).id, ...basePayload } as any;
+          if ('avatarUrl' in insertPayload) {
+            (insertPayload as any).avaterUrl = (insertPayload as any).avatarUrl;
+            delete (insertPayload as any).avatarUrl;
+          }
+          retry = await supaAdmin
+            .from('Profile')
+            .insert(insertPayload)
+            .select()
+            .single();
+          if (retry.error) {
+            console.error('Error inserting Profile:', retry.error.message);
+            throw new InternalServerErrorException('Could not save profile.');
+          }
+        }
+      } else if (insErr) {
+        console.error('Error inserting Profile:', insErr.message);
         throw new InternalServerErrorException('Could not save profile.');
       }
     } else if (profUpdateErr) {
@@ -314,7 +376,7 @@ export class AuthController {
       await supaAdmin
         .from('users')
         .update({ full_name: displayName, avatar_url: avatarUrl })
-        .eq('id', (user as any).id);
+        .eq('userID', (user as any).id);
     } catch (e) {
       // best-effort
     }
@@ -358,9 +420,10 @@ export class AuthController {
     if (error) {
       throw new InternalServerErrorException('Failed to load profile');
     }
-    if (data?.avatarUrl) {
+    const rawAvatar = (data && ((data as any).avatarUrl || (data as any).avatarurl || (data as any).avaterUrl || (data as any).avatar_url)) as string | undefined;
+    if (rawAvatar) {
       try {
-        let key = String((data as any).avatarUrl);
+        let key = String(rawAvatar);
         const idx = key.lastIndexOf('/avatars/');
         if (idx !== -1) key = key.substring(idx + '/avatars/'.length);
         const { data: signed } = await admin.storage
@@ -372,4 +435,5 @@ export class AuthController {
     return data || null;
   }
 }
+
 
