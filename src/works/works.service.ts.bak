@@ -293,7 +293,7 @@ export class WorksService {
         if (names.length) {
           const { error: createErr } = await supa
             .from('Tag')
-            .insert(names.map((name) => ({ name })));
+            .insert(names.map((name) => ({ name })), { upsert: true });
           if (createErr && !createErr.message.includes('duplicate')) {
             throw new InternalServerErrorException('Failed to create tags: ' + createErr.message);
           }

@@ -31,7 +31,7 @@ export class AuthController {
   private async upsertUserAndProfile(user: any) {
     const admin = this.supa.getAdminClient();
     const displayName = user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
-    const avatar = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
+    const oauthAvatar = user?.user_metadata?.avatar_url || user?.user_metadata?.picture || null;
 
     // Upsert into users table (id is auth.users.id)
     try {
@@ -39,41 +39,92 @@ export class AuthController {
         id: user.id,
         email: user.email,
         full_name: displayName,
-        avatar_url: avatar,
+        avatar_url: oauthAvatar,
       } as any, { onConflict: 'id' });
     } catch (e) {
       // ignore â€” non-fatal
     }
 
+    // Determine final avatar: keep existing custom avatar (from avatars bucket) if present
+    let avatarFinal = oauthAvatar as any;
+    let existingAvatar: any = null;
+    try {
+      let sel = await admin
+        .from('Profile')
+        .select('id, userID, avatarUrl, avatarurl, avaterUrl, avatar_url')
+        .eq('userID', user.id)
+        .maybeSingle();
+      let row = sel.data;
+      if (!row) {
+        sel = await admin
+          .from('Profile')
+          .select('id, userID, avatarUrl, avatarurl, avaterUrl, avatar_url')
+          .eq('id', user.id)
+          .maybeSingle();
+        row = sel.data;
+      }
+      existingAvatar = row && (row.avatarUrl || row.avatarurl || (row as any).avaterUrl || row.avatar_url);
+      if (existingAvatar) avatarFinal = existingAvatar;
+    } catch {}
+
     // Update then insert into Profile table keyed by id
     const nowIso = new Date().toISOString();
-    const { data: prof, error: upErr } = await admin
-      .from('Profile')
-      .update({
-        displayName: displayName,
-        avatarUrl: avatar,
-        updatedAt: nowIso,
-      })
-      .eq('userID', user.id)
-      .select()
-      .maybeSingle();
-
-    if (!prof && !upErr) {
-      const { error: insErr } = await admin
+    // Try update existing row first (prefer camelCase; fallback to different casings if needed)
+    let profUpdateErr: any = null;
+    let profUpdate: any = null;
+    {
+      const { data, error } = await admin
         .from('Profile')
-        .insert({ id: user.id, userID: user.id,
-          displayName: displayName,
-          avatarUrl: avatar,
-          updatedAt: nowIso,
-        })
+        .update({ displayName: displayName, updatedAt: nowIso })
+        .eq('userID', user.id)
+        .select()
+        .maybeSingle();
+      profUpdate = data; profUpdateErr = error || null;
+    }
+    if (profUpdateErr && String(profUpdateErr.message || '').includes('avatarUrl')) {
+      // Retry with alternative casing
+      let payload: any = { displayName: displayName, updatedAt: nowIso };
+      const retry = await admin
+        .from('Profile')
+        .update(payload)
+        .eq('userID', user.id)
+        .select()
+        .maybeSingle();
+      profUpdate = retry.data; profUpdateErr = retry.error || null;
+      if (!profUpdate) {
+        const retry2 = await admin
+          .from('Profile')
+          .update(payload)
+          .eq('id', user.id)
+          .select()
+          .maybeSingle();
+        profUpdate = retry2.data; profUpdateErr = retry2.error || null;
+      }
+    }
+
+    if (!profUpdate && !profUpdateErr) {
+      // No row to update -> insert
+      let insertPayload: any = { id: user.id, userID: user.id, displayName: displayName, avatarUrl: avatarFinal, updatedAt: nowIso };
+      const ins = await admin
+        .from('Profile')
+        .insert(insertPayload)
         .select()
         .single();
-      if (insErr) {
-        // log and continue
-        console.error('Profile insert failed:', insErr.message);
+      if (ins.error && String(ins.error.message || '').includes('avatarUrl')) {
+        insertPayload = { id: user.id, userID: user.id, displayName: displayName, avatarurl: avatarFinal, updatedAt: nowIso } as any;
+        const retry = await admin.from('Profile').insert(insertPayload).select().single();
+        if (retry.error) {
+          insertPayload = { id: user.id, userID: user.id, displayName: displayName, avaterUrl: avatarFinal, updatedAt: nowIso } as any;
+          const retry2 = await admin.from('Profile').insert(insertPayload).select().single();
+          if (retry2.error) {
+            console.error('Profile insert failed:', retry2.error.message);
+          }
+        }
+      } else if (ins.error) {
+        console.error('Profile insert failed:', ins.error.message);
       }
-    } else if (upErr) {
-      console.error('Profile update check failed:', upErr.message);
+    } else if (profUpdateErr) {
+      console.error('Profile update check failed:', profUpdateErr.message);
     }
   }
 
