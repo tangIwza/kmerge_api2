@@ -12,8 +12,9 @@ async function bootstrap() {
 
   app.enableCors({
     origin: [
+      'http://localhost:5173',
       'https://k-merge-frontend-dev.vercel.app',
-      /\.vercel\.app$/
+      /\.vercel\.app$/,
     ],
     credentials: true,
   });
