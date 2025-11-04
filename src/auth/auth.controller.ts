@@ -9,16 +9,22 @@ import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 
 // Helper function to set cookies
-const setAuthCookies = (res: Response, session: any, maxDays: number, isProd: boolean) => {
+const setAuthCookies = (
+  res: Response,
+  session: any,
+  maxDays: number,
+  isProd: boolean,
+  sameSite: 'lax' | 'none' = 'lax',
+) => {
   const access = session?.access_token || '';
   const refresh = session?.refresh_token || '';
 
   res.cookie('supa_access_token', access, {
-    httpOnly: true, sameSite: 'lax', secure: isProd,
+    httpOnly: true, sameSite, secure: isProd,
     maxAge: maxDays * 24 * 60 * 60 * 1000, path: '/',
   });
   res.cookie('supa_refresh_token', refresh, {
-    httpOnly: true, sameSite: 'lax', secure: isProd,
+    httpOnly: true, sameSite, secure: isProd,
     maxAge: maxDays * 24 * 60 * 60 * 1000, path: '/',
   });
 };
@@ -172,7 +178,14 @@ export class AuthController {
 
     const isProd = this.cfg.get('NODE_ENV') === 'production';
     const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
-    setAuthCookies(res, data.session, maxDays, isProd);
+    const sameSite = (() => {
+      try {
+        const appUrl = new URL(this.cfg.get('APP_URL'));
+        const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
+        return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
+      } catch { return 'lax'; }
+    })();
+    setAuthCookies(res, data.session, maxDays, isProd, sameSite);
     // Ensure rows exist in users and Profile
     await this.upsertUserAndProfile(data.user);
     return { user: data.user };
@@ -199,7 +212,14 @@ export class AuthController {
 
     const isProd  = this.cfg.get('NODE_ENV') === 'production';
     const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
-    setAuthCookies(res, data.session, maxDays, isProd);
+    const sameSite = (() => {
+      try {
+        const appUrl = new URL(this.cfg.get('APP_URL'));
+        const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
+        return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
+      } catch { return 'lax'; }
+    })();
+    setAuthCookies(res, data.session, maxDays, isProd, sameSite);
 
     // Ensure rows exist in users and Profile
     await this.upsertUserAndProfile(data.user);
@@ -220,7 +240,14 @@ export class AuthController {
 
       const isProd = this.cfg.get('NODE_ENV') === 'production';
       const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
-      setAuthCookies(res, data.session, maxDays, isProd);
+      const sameSite = (() => {
+        try {
+          const appUrl = new URL(this.cfg.get('APP_URL'));
+          const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
+          return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
+        } catch { return 'lax'; }
+      })();
+      setAuthCookies(res, data.session, maxDays, isProd, sameSite);
 
       // Ensure rows exist in users and Profile
       await this.upsertUserAndProfile(data.user);
