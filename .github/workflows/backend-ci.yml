@@ -82,9 +82,8 @@ jobs:
             package-lock.json
       
       # --- ส่วนของการ Deploy ---
-      # นี่คือส่วนที่คุณต้องแก้ไขตามผู้ให้บริการ (Render, Heroku, etc.)
-      - name: 🚀 Deploy to Production (Placeholder)
-        run: echo "Build complete. Add your deployment script here."
+      - name: Trigger Render Deploy
+        run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
 
       # ตัวอย่าง: หากคุณใช้ Render.com และใช้ Deploy Hook
       # - name: Trigger Render Deploy
