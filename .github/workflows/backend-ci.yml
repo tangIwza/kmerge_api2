@@ -1,0 +1,91 @@
+# .github/workflows/backend-ci.yml
+
+name: Backend CI/CD
+
+on:
+  # ทำงานเมื่อมีการ push ไปยัง branch 'main'
+  push:
+    branches: [ "main" ]
+  # ทำงานเมื่อมีการเปิด Pull Request มายัง branch 'main'
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # ----------------------------------------------
+  # Job 1: CI (Continuous Integration)
+  # ----------------------------------------------
+  ci:
+    name: Run Linter and Tests
+    runs-on: ubuntu-latest # ใช้ OS มาตรฐาน
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4 # ดึงโค้ดจาก repo
+
+      - name: Setup Node.js v18
+        uses: actions/setup-node@v4 # ติดตั้ง Node.js
+        with:
+          node-version: '18'
+          cache: 'npm' # สั่ง cache 'npm' dependencies
+
+      - name: Install dependencies
+        run: npm ci # ใช้ npm ci จะเร็วกว่า npm install และอิงตาม package-lock.json
+
+      - name: Run linter
+        run: npm run lint # รัน linter ตามที่กำหนดใน package.json
+
+      - name: Run tests
+        run: npm run test # รัน tests ตามที่กำหนดใน package.json
+        env:
+          # คุณต้องตั้งค่า Secrets เหล่านี้ใน GitHub
+          # เพื่อให้ระบบเทสสามารถเชื่อมต่อกับ Supabase (ฐานข้อมูลสำหรับเทส)
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL_TEST }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY_TEST }}
+
+  # ----------------------------------------------
+  # Job 2: CD (Continuous Deployment)
+  # ----------------------------------------------
+  cd:
+    name: Build and Deploy to Production
+    needs: ci # ต้องรอให้ job 'ci' ทำงานสำเร็จก่อน
+    runs-on: ubuntu-latest
+    
+    # เงื่อนไข: ทำงานเฉพาะเมื่อเป็น event 'push' ไปยัง 'main' เท่านั้น
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js v18
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build project
+        run: npm run build # รัน build script จาก package.json
+        env:
+          NODE_ENV: production # ตั้งค่า environment เป็น production
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4 # อัปโหลดไฟล์ที่ build เสร็จ (โฟลเดอร์ dist)
+        with:
+          name: production-build
+          path: | # รายการไฟล์/โฟลเดอร์ที่จะเก็บไว้
+            dist
+            node_modules
+            package.json
+            package-lock.json
+      
+      # --- ส่วนของการ Deploy ---
+      # นี่คือส่วนที่คุณต้องแก้ไขตามผู้ให้บริการ (Render, Heroku, etc.)
+      - name: 🚀 Deploy to Production (Placeholder)
+        run: echo "Build complete. Add your deployment script here."
+
+      # ตัวอย่าง: หากคุณใช้ Render.com และใช้ Deploy Hook
+      # - name: Trigger Render Deploy
+      #   run: curl -X POST ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
