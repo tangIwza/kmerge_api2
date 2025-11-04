@@ -12,12 +12,14 @@ async function bootstrap() {
 
   app.enableCors({
     origin: [
-      'https://k-merge.vercel.app',
+      'https://k-merge-frontend-dev.vercel.app',
       /\.vercel\.app$/
     ],
     credentials: true,
   });
 
-  await app.listen(3000);
+  app.setGlobalPrefix('api');
+
+  await app.listen(process.env.PORT || 3000);
 }
 bootstrap();
