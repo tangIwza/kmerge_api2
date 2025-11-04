@@ -14,10 +14,13 @@ async function bootstrap() {
     origin: [
       'http://localhost:5173',
       'https://k-merge-frontend-dev.vercel.app',
-      /\.vercel\.app$/,
+      /\.vercel\.app$/, // รองรับ preview URLs ทั้งหมด
     ],
     credentials: true,
+    methods: ['GET','HEAD','PUT','PATCH','POST','DELETE','OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization'],
   });
+
 
   app.setGlobalPrefix('api');
 

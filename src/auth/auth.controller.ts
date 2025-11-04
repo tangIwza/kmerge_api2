@@ -32,17 +32,17 @@ const setAuthCookies = (
   res.cookie('supa_refresh_token', refresh, cookieOptions);
 };
 
-private allowCorsForFrontend(res: Response) {
-  const fe = this.cfg.get('FRONTEND_URL') || 'http://localhost:5173';
-  res.setHeader('Access-Control-Allow-Origin', fe);
-  res.setHeader('Access-Control-Allow-Credentials', 'true');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Vary', 'Origin');
-}
-
 @Controller('auth')
 export class AuthController {
   constructor(private supa: SupabaseService, private cfg: ConfigService) {}
+
+  private allowCorsForFrontend(res: Response) {
+    const fe = this.cfg.get('FRONTEND_URL') || 'http://localhost:5173';
+    res.setHeader('Access-Control-Allow-Origin', fe);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.setHeader('Vary', 'Origin');
+  }
 
   // Build callback URL that always points to the API prefix, regardless of APP_URL format
   private buildCallbackUrl(): string {
@@ -313,10 +313,15 @@ export class AuthController {
   @Post('logout')
   @HttpCode(HttpStatus.OK)
   async logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('supa_access_token', { path: '/' });
-    res.clearCookie('supa_refresh_token', { path: '/' });
+    const isProd = this.cfg.get('NODE_ENV') === 'production';
+    const sameSite: 'lax' | 'none' = isProd ? 'none' : 'lax';
+    const opts = { path: '/', sameSite, secure: isProd } as const;
+
+    res.clearCookie('supa_access_token', opts);
+    res.clearCookie('supa_refresh_token', opts);
     return { ok: true };
   }
+
 
   @Patch('me')
   @UseGuards(AuthGuard)
