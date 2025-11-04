@@ -14,20 +14,22 @@ const setAuthCookies = (
   session: any,
   maxDays: number,
   isProd: boolean,
-  sameSite: 'lax' | 'none' = 'lax',
 ) => {
   const access = session?.access_token || '';
   const refresh = session?.refresh_token || '';
 
-  res.cookie('supa_access_token', access, {
-    httpOnly: true, sameSite, secure: isProd,
-    maxAge: maxDays * 24 * 60 * 60 * 1000, path: '/',
-  });
-  res.cookie('supa_refresh_token', refresh, {
-    httpOnly: true, sameSite, secure: isProd,
-    maxAge: maxDays * 24 * 60 * 60 * 1000, path: '/',
-  });
+  const cookieOptions = {
+    httpOnly: true,
+    sameSite: isProd ? 'none' as const : 'lax' as const,
+    secure: isProd,
+    path: '/',
+    maxAge: maxDays * 24 * 60 * 60 * 1000,
+  };
+
+  res.cookie('supa_access_token', access, cookieOptions);
+  res.cookie('supa_refresh_token', refresh, cookieOptions);
 };
+
 
 @Controller('auth')
 export class AuthController {
