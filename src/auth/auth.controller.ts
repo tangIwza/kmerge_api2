@@ -180,7 +180,7 @@ export class AuthController {
     const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
     const sameSite = (() => {
       try {
-        const appUrl = new URL(this.cfg.get('APP_URL'));
+        const appUrl = new URL(this.cfg.get('APP_URL') || '');
         const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
         return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
       } catch { return 'lax'; }
@@ -214,7 +214,7 @@ export class AuthController {
     const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
     const sameSite = (() => {
       try {
-        const appUrl = new URL(this.cfg.get('APP_URL'));
+        const appUrl = new URL(this.cfg.get('APP_URL') || '');
         const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
         return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
       } catch { return 'lax'; }
@@ -242,7 +242,7 @@ export class AuthController {
       const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
       const sameSite = (() => {
         try {
-          const appUrl = new URL(this.cfg.get('APP_URL'));
+          const appUrl = new URL(this.cfg.get('APP_URL') || '');
           const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
           return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
         } catch { return 'lax'; }
