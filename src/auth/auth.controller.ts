@@ -9,6 +9,7 @@ import { RegisterUserDto } from './dto/register-user.dto';
 import { LoginUserDto } from './dto/login-user.dto';
 
 // Helper function to set cookies
+
 const setAuthCookies = (
   res: Response,
   session: any,
@@ -31,6 +32,13 @@ const setAuthCookies = (
   res.cookie('supa_refresh_token', refresh, cookieOptions);
 };
 
+private allowCorsForFrontend(res: Response) {
+  const fe = this.cfg.get('FRONTEND_URL') || 'http://localhost:5173';
+  res.setHeader('Access-Control-Allow-Origin', fe);
+  res.setHeader('Access-Control-Allow-Credentials', 'true');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Vary', 'Origin');
+}
 
 @Controller('auth')
 export class AuthController {
@@ -193,6 +201,8 @@ export class AuthController {
 
     const isProd = this.cfg.get('NODE_ENV') === 'production';
     const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
+    this.allowCorsForFrontend(res);
+
     setAuthCookies(res, data.session, maxDays, isProd);
     // Ensure rows exist in users and Profile
     await this.upsertUserAndProfile(data.user);
@@ -220,6 +230,8 @@ export class AuthController {
 
     const isProd  = this.cfg.get('NODE_ENV') === 'production';
     const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
+    this.allowCorsForFrontend(res);
+
     setAuthCookies(res, data.session, maxDays, isProd);
 
     // Ensure rows exist in users and Profile
@@ -241,6 +253,7 @@ export class AuthController {
 
       const isProd = this.cfg.get('NODE_ENV') === 'production';
       const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
+      this.allowCorsForFrontend(res);
       setAuthCookies(res, data.session, maxDays, isProd);
 
       // Ensure rows exist in users and Profile
