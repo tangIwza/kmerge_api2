@@ -18,13 +18,14 @@ const setAuthCookies = (
   const access = session?.access_token || '';
   const refresh = session?.refresh_token || '';
 
+  const sameSite: 'lax' | 'none' = isProd ? 'none' : 'lax';
   const cookieOptions = {
     httpOnly: true,
-    sameSite: isProd ? 'none' as const : 'lax' as const,
+    sameSite,
     secure: isProd,
     path: '/',
     maxAge: maxDays * 24 * 60 * 60 * 1000,
-  };
+  } as const;
 
   res.cookie('supa_access_token', access, cookieOptions);
   res.cookie('supa_refresh_token', refresh, cookieOptions);
@@ -34,6 +35,22 @@ const setAuthCookies = (
 @Controller('auth')
 export class AuthController {
   constructor(private supa: SupabaseService, private cfg: ConfigService) {}
+
+  // Build callback URL that always points to the API prefix, regardless of APP_URL format
+  private buildCallbackUrl(): string {
+    const raw = this.cfg.get('APP_URL') || '';
+    try {
+      const u = new URL(raw);
+      const cleanPath = u.pathname.replace(/\/+$/, '');
+      const pathWithApi = cleanPath.endsWith('/api') ? cleanPath : `${cleanPath}/api`;
+      return `${u.origin}${pathWithApi}/auth/callback`;
+    } catch {
+      // Fallback: best effort append
+      const base = raw.replace(/\/+$/, '');
+      const withApi = base.endsWith('/api') ? base : `${base}/api`;
+      return `${withApi}/auth/callback`;
+    }
+  }
 
   // Ensure a row exists in users and Profile tables according to the schema
   private async upsertUserAndProfile(user: any) {
@@ -50,7 +67,6 @@ export class AuthController {
         avatar_url: oauthAvatar,
       } as any, { onConflict: 'id' });
     } catch (e) {
-      // ignore â€” non-fatal
     }
 
     // Determine final avatar: keep existing custom avatar (from avatars bucket) if present
@@ -141,9 +157,6 @@ export class AuthController {
   async register(@Body() body: RegisterUserDto) {
     const { email, password, full_name } = body;
 
-    // âœ… **à¹à¸à¹‰à¹„à¸‚à¸ªà¹ˆà¸§à¸™à¸™à¸µà¹‰**
-    // à¹€à¸£à¸²à¸ˆà¸°à¹€à¸­à¸²à¸ªà¹ˆà¸§à¸™à¸—à¸µà¹ˆ insert à¸¥à¸‡ public.users à¸­à¸­à¸à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
-    // à¹€à¸žà¸£à¸²à¸° Trigger à¹ƒà¸™ Database à¸ˆà¸°à¸ˆà¸±à¸”à¸à¸²à¸£à¹ƒà¸«à¹‰à¹€à¸£à¸²à¹€à¸­à¸‡
     const frontend = this.cfg.get('FRONTEND_URL') || 'http://localhost:5173';
     const emailRedirectTo = `${frontend}/verify?email=${encodeURIComponent(email)}`;
 
@@ -180,14 +193,7 @@ export class AuthController {
 
     const isProd = this.cfg.get('NODE_ENV') === 'production';
     const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
-    const sameSite = (() => {
-      try {
-        const appUrl = new URL(this.cfg.get('APP_URL') || '');
-        const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
-        return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
-      } catch { return 'lax'; }
-    })();
-    setAuthCookies(res, data.session, maxDays, isProd, sameSite);
+    setAuthCookies(res, data.session, maxDays, isProd);
     // Ensure rows exist in users and Profile
     await this.upsertUserAndProfile(data.user);
     return { user: data.user };
@@ -197,7 +203,7 @@ export class AuthController {
   async login(@Res() res: Response) {
     const { data, error } = await this.supa.client().auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${this.cfg.get('APP_URL')}/auth/callback` },
+      options: { redirectTo: this.buildCallbackUrl() },
     });
     if (error) return res.status(500).send(error.message);
     return res.redirect(data.url);
@@ -214,14 +220,7 @@ export class AuthController {
 
     const isProd  = this.cfg.get('NODE_ENV') === 'production';
     const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
-    const sameSite = (() => {
-      try {
-        const appUrl = new URL(this.cfg.get('APP_URL') || '');
-        const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
-        return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
-      } catch { return 'lax'; }
-    })();
-    setAuthCookies(res, data.session, maxDays, isProd, sameSite);
+    setAuthCookies(res, data.session, maxDays, isProd);
 
     // Ensure rows exist in users and Profile
     await this.upsertUserAndProfile(data.user);
@@ -242,14 +241,7 @@ export class AuthController {
 
       const isProd = this.cfg.get('NODE_ENV') === 'production';
       const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
-      const sameSite = (() => {
-        try {
-          const appUrl = new URL(this.cfg.get('APP_URL') || '');
-          const feUrl = new URL(this.cfg.get('FRONTEND_URL') || '');
-          return (isProd && appUrl.origin !== feUrl.origin) ? 'none' : 'lax';
-        } catch { return 'lax'; }
-      })();
-      setAuthCookies(res, data.session, maxDays, isProd, sameSite);
+      setAuthCookies(res, data.session, maxDays, isProd);
 
       // Ensure rows exist in users and Profile
       await this.upsertUserAndProfile(data.user);
