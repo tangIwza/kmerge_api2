@@ -8,9 +8,11 @@ import { UpdateWorkDto } from './dto/update-work.dto';
 @Injectable()
 export class WorksService {
   private table: string;
+  private savedTable: string;
 
   constructor(private supa: SupabaseService, cfg: ConfigService) {
     this.table = cfg.get<string>('WORKS_TABLE') || 'Work';
+    this.savedTable = cfg.get<string>('SAVED_WORKS_TABLE') || 'Bookmark';
   }
 
   async create(userId: string, dto: CreateWorkDto) {
@@ -198,11 +200,14 @@ export class WorksService {
       fileurl: await this.signedMediaUrl(m.fileurl),
     })));
 
+    const saveCount = await this.countSaves(id);
+
     return {
       ...work,
       media: mediaWithUrl,
       tags: tagItems,
       thumbnail: mediaWithUrl[0]?.fileurl || null,
+      saveCount,
     };
   }
 
@@ -252,6 +257,46 @@ export class WorksService {
         tags: tagsByWork[wid] || [],
       };
     }));
+  }
+
+  async listSaved(userId: string) {
+    const supa = this.supa.getAdminClient();
+    const { data: savedRows, error } = await supa
+      .from(this.savedTable)
+      .select('workId, savedAt')
+      .eq('userId', userId);
+    if (error) throw new InternalServerErrorException(error.message);
+    if (!savedRows || savedRows.length === 0) return [];
+
+    const ordered = [...savedRows].sort((a: any, b: any) => {
+      const aDate = new Date(a.savedAt || a.createdAt || a.created_at || 0).getTime();
+      const bDate = new Date(b.savedAt || b.createdAt || b.created_at || 0).getTime();
+      return bDate - aDate;
+    });
+    const ids = ordered.map((row: any) => row.workId);
+    const savedMeta = new Map<string, string | null>();
+    ordered.forEach((row: any) => {
+      const stamp = row.savedAt || row.createdAt || row.created_at || null;
+      savedMeta.set(row.workId, stamp);
+    });
+    const { data: works, error: worksErr } = await supa
+      .from(this.table)
+      .select('*')
+      .in('workId', ids);
+    if (worksErr) throw new InternalServerErrorException(worksErr.message);
+
+    const enriched = await this.enrichWorks(works || []);
+    const orderIndex = new Map(ids.map((wid: string, idx: number) => [wid, idx]));
+    return enriched
+      .map((work: any) => ({
+        ...work,
+        savedAt: savedMeta.get(work.workId ?? work.id) || null,
+      }))
+      .sort((a: any, b: any) => {
+        const aId = a.workId ?? a.id;
+        const bId = b.workId ?? b.id;
+        return (orderIndex.get(aId) ?? 0) - (orderIndex.get(bId) ?? 0);
+      });
   }
 
   async update(userId: string, id: string, dto: UpdateWorkDto) {
@@ -390,5 +435,63 @@ export class WorksService {
     const { error: delWorkErr } = await supa.from(this.table).delete().eq('workId', id).eq('authorId', userId);
     if (delWorkErr) throw new InternalServerErrorException(delWorkErr.message);
   }
-}
 
+  async getSaveSnapshot(userId: string | null, workId: string) {
+    const total = await this.countSaves(workId);
+    if (!userId) return { total, saved: false };
+    const saved = await this.hasSaved(userId, workId);
+    return { total, saved };
+  }
+
+  async saveWork(userId: string, workId: string) {
+    const supa = this.supa.getAdminClient();
+    const { data: existing } = await supa
+      .from(this.savedTable)
+      .select('id')
+      .eq('userId', userId)
+      .eq('workId', workId)
+      .maybeSingle();
+    if (!existing) {
+      const { error } = await supa
+        .from(this.savedTable)
+        .insert({
+          userId,
+          workId,
+          savedAt: new Date().toISOString(),
+        });
+      if (error) throw new InternalServerErrorException(error.message);
+    }
+    return this.getSaveSnapshot(userId, workId);
+  }
+
+  async unsaveWork(userId: string, workId: string) {
+    const supa = this.supa.getAdminClient();
+    const { error } = await supa
+      .from(this.savedTable)
+      .delete()
+      .eq('userId', userId)
+      .eq('workId', workId);
+    if (error) throw new InternalServerErrorException(error.message);
+    return this.getSaveSnapshot(userId, workId);
+  }
+
+  private async countSaves(workId: string): Promise<number> {
+    const supa = this.supa.getAdminClient();
+    const { count } = await supa
+      .from(this.savedTable)
+      .select('workId', { count: 'exact', head: true })
+      .eq('workId', workId);
+    return count || 0;
+  }
+
+  private async hasSaved(userId: string, workId: string): Promise<boolean> {
+    const supa = this.supa.getAdminClient();
+    const { data } = await supa
+      .from(this.savedTable)
+      .select('id')
+      .eq('userId', userId)
+      .eq('workId', workId)
+      .maybeSingle();
+    return !!data;
+  }
+}

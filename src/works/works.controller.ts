@@ -32,6 +32,13 @@ export class WorksController {
     return await this.works.listMine(user.id);
   }
 
+  @Get('saved')
+  @UseGuards(AuthGuard)
+  async saved(@Req() req: Request) {
+    const user = (req as any).user;
+    return await this.works.listSaved(user.id);
+  }
+
   // Search/list tags
   @Get('meta/tags')
   async tags(@Query('q') q?: string) {
@@ -50,6 +57,27 @@ export class WorksController {
   async update(@Req() req: Request, @Param('id') id: string, @Body() body: UpdateWorkDto) {
     const user = (req as any).user;
     return await this.works.update(user.id, id, body);
+  }
+
+  @Get(':id/save')
+  @UseGuards(AuthGuard)
+  async getSave(@Req() req: Request, @Param('id') id: string) {
+    const user = (req as any).user;
+    return await this.works.getSaveSnapshot(user.id, id);
+  }
+
+  @Post(':id/save')
+  @UseGuards(AuthGuard)
+  async save(@Req() req: Request, @Param('id') id: string) {
+    const user = (req as any).user;
+    return await this.works.saveWork(user.id, id);
+  }
+
+  @Delete(':id/save')
+  @UseGuards(AuthGuard)
+  async unsave(@Req() req: Request, @Param('id') id: string) {
+    const user = (req as any).user;
+    return await this.works.unsaveWork(user.id, id);
   }
 
   // Delete a work (owner only)
