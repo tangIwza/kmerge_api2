@@ -45,6 +45,11 @@ export class WorksController {
     return await this.works.searchTags(q);
   }
 
+  @Get('author/:id')
+  async byAuthor(@Param('id') id: string) {
+    return await this.works.listPublishedByAuthor(id);
+  }
+
   // Get one work with media + tags
   @Get(':id')
   async getOne(@Param('id') id: string) {

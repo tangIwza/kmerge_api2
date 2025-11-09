@@ -150,6 +150,40 @@ export class WorksService {
     }
   }
 
+  private async signedAvatarUrl(pathOrUrl?: string | null): Promise<string | null> {
+    if (!pathOrUrl) return null;
+    const supa = this.supa.getAdminClient();
+    try {
+      let key = pathOrUrl;
+      const idx = key.lastIndexOf('/avatars/');
+      if (idx !== -1) key = key.substring(idx + '/avatars/'.length);
+      const { data, error } = await supa.storage
+        .from('avatars')
+        .createSignedUrl(key, 60 * 60 * 24 * 7);
+      if (error || !data?.signedUrl) return pathOrUrl;
+      return data.signedUrl;
+    } catch {
+      return pathOrUrl;
+    }
+  }
+
+  private async fetchPublicProfile(userId?: string | null) {
+    if (!userId) return null;
+    const supa = this.supa.getAdminClient();
+    const { data, error } = await supa
+      .from('Profile')
+      .select('*')
+      .eq('userID', userId)
+      .maybeSingle();
+    if (error) {
+      throw new InternalServerErrorException('Failed to load author profile');
+    }
+    if (!data) return null;
+    const rawAvatar = (data as any).avatarUrl || (data as any).avatarurl || (data as any).avaterUrl || (data as any).avatar_url || null;
+    const avatarUrl = await this.signedAvatarUrl(rawAvatar);
+    return { ...data, avatarUrl };
+  }
+
   async listPublished() {
     const supa = this.supa.getAdminClient();
 
@@ -172,6 +206,24 @@ export class WorksService {
       .order('created_at', { ascending: false });
     if (error) throw new InternalServerErrorException(error.message);
     return await this.enrichWorks(works || []);
+  }
+
+  async listPublishedByAuthor(authorId: string) {
+    if (!authorId) return [];
+    const supa = this.supa.getAdminClient();
+    const { data: works, error } = await supa
+      .from(this.table)
+      .select('*')
+      .eq('authorId', authorId)
+      .eq('status', 'published')
+      .order('publishedAt', { ascending: false })
+      .order('updatedAt', { ascending: false });
+    if (error) throw new InternalServerErrorException(error.message);
+    const [enriched, profile] = await Promise.all([
+      this.enrichWorks(works || []),
+      this.fetchPublicProfile(authorId).catch(() => null),
+    ]);
+    return { profile, works: enriched };
   }
 
   async getOne(id: string) {
@@ -201,6 +253,7 @@ export class WorksService {
     })));
 
     const saveCount = await this.countSaves(id);
+    const authorProfile = await this.fetchPublicProfile((work as any).authorId).catch(() => null);
 
     return {
       ...work,
@@ -208,6 +261,7 @@ export class WorksService {
       tags: tagItems,
       thumbnail: mediaWithUrl[0]?.fileurl || null,
       saveCount,
+      authorProfile,
     };
   }
 

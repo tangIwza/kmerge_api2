@@ -1,5 +1,5 @@
 ﻿// src/auth/auth.controller.ts
-import { Controller, Get, Res, Query, Post, Req, UseGuards, Body, Patch, HttpCode, HttpStatus, UnauthorizedException, InternalServerErrorException } from '@nestjs/common';
+import { Controller, Get, Res, Query, Post, Req, UseGuards, Body, Patch, HttpCode, HttpStatus, UnauthorizedException, InternalServerErrorException, NotFoundException, Param } from '@nestjs/common';
 import type { Response, Request } from 'express';
 import { SupabaseService } from './supabase.service';
 import { ConfigService } from '@nestjs/config';
@@ -497,15 +497,12 @@ export class AuthController {
     return { ok: true, profile };
   }
 
-  // Fetch current user's profile (source of truth for profile UI/forms)
-  @Get('profile')
-  @UseGuards(AuthGuard)
-  async myProfile(@Req() req: Request) {
+  private async fetchProfileRow(userId: string) {
     const admin = this.supa.getAdminClient();
     const { data, error } = await admin
       .from('Profile')
       .select('*')
-      .eq('userID', (req as any).user.id)
+      .eq('userID', userId)
       .maybeSingle();
     if (error) {
       throw new InternalServerErrorException('Failed to load profile');
@@ -523,6 +520,23 @@ export class AuthController {
       } catch {}
     }
     return data || null;
+  }
+
+  // Fetch current user's profile (source of truth for profile UI/forms)
+  @Get('profile')
+  @UseGuards(AuthGuard)
+  async myProfile(@Req() req: Request) {
+    return await this.fetchProfileRow((req as any).user.id);
+  }
+
+  // Public profile lookup by user id (used on creator pages)
+  @Get('profile/public/:userId')
+  async publicProfile(@Param('userId') userId: string) {
+    const profile = await this.fetchProfileRow(userId);
+    if (!profile) {
+      throw new NotFoundException('Profile not found');
+    }
+    return profile;
   }
 }
 
