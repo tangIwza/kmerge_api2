@@ -610,6 +610,16 @@ export class AuthController {
     }
     return profile;
   }
+
+  @Get('supabase/config')
+  async supabaseConfig() {
+    const url = this.cfg.get<string>('SUPABASE_URL') || null;
+    const anonKey = this.cfg.get<string>('SUPABASE_ANON_KEY') || null;
+    if (!url || !anonKey) {
+      throw new InternalServerErrorException('Supabase is not configured on the server');
+    }
+    return { url, anonKey };
+  }
 }
 
 
