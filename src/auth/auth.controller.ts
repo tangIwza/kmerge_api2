@@ -209,6 +209,32 @@ export class AuthController {
     return { user: data.user };
   }
 
+  @Post('admin/login')
+  @HttpCode(HttpStatus.OK)
+  async adminLogin(@Body() body: LoginUserDto, @Res({ passthrough: true }) res: Response) {
+    const { email, password } = body;
+    const { data, error } = await this.supa.client().auth.signInWithPassword({
+      email,
+      password,
+    });
+
+    if (error) {
+      throw new UnauthorizedException(error.message);
+    }
+
+    const role = await this.fetchUserRole((data.user as any)?.id);
+    if (!this.isAdminRole(role)) {
+      throw new UnauthorizedException('Admins only');
+    }
+
+    const isProd = this.cfg.get('NODE_ENV') === 'production';
+    const maxDays = Number(this.cfg.get('SESSION_COOKIE_MAX_DAYS') || 7);
+    this.allowCorsForFrontend(res);
+    setAuthCookies(res, data.session, maxDays, isProd);
+    await this.upsertUserAndProfile(data.user);
+    return { user: data.user, role };
+  }
+
   @Get('login')
   async login(@Res() res: Response) {
     const { data, error } = await this.supa.client().auth.signInWithOAuth({
@@ -309,6 +335,18 @@ export class AuthController {
     }
     return { user: req.user, profile };
   }
+
+  @Get('role')
+  @UseGuards(AuthGuard)
+  async getRole(@Req() req: Request) {
+    const user = (req as any).user;
+    if (!user?.id) {
+      throw new UnauthorizedException('No user found on request');
+    }
+    const role = await this.fetchUserRole(user.id);
+    return { role };
+  }
+
 
   @Post('logout')
   @HttpCode(HttpStatus.OK)
@@ -495,6 +533,40 @@ export class AuthController {
       .eq('userID', (user as any).id)
       .maybeSingle();
     return { ok: true, profile };
+  }
+
+  private isAdminRole(role?: string | null) {
+    if (!role) return false;
+    const normalized = role.toLowerCase();
+    return ['admin', 'super_admin', 'superadmin', 'owner'].includes(normalized);
+  }
+
+  private async fetchUserRole(userId: string): Promise<string | null> {
+    if (!userId) return null;
+    const admin = this.supa.getAdminClient();
+    const fetchRole = async (column: 'userID' | 'id') => {
+      return admin
+        .from('users')
+        .select('role')
+        .eq(column, userId)
+        .maybeSingle();
+    };
+
+    let { data, error } = await fetchRole('userID');
+    const needsRetry =
+      (!data && !error) ||
+      (error && String(error.message || '').toLowerCase().includes('userid'));
+    if (needsRetry) {
+      const retry = await fetchRole('id');
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      throw new InternalServerErrorException('Failed to fetch user role');
+    }
+
+    return data?.role ?? null;
   }
 
   private async fetchProfileRow(userId: string) {
